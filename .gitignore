@@ -1,3 +1,4 @@
 .idea/
 equity.csv
 *.pyc
+*/*.pyc
