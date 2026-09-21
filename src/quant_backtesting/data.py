@@ -15,6 +15,22 @@ from quant_backtesting.event import Event, MarketEvent
 type BarRow = tuple[datetime | Timestamp, pd.Series]
 
 
+def csv_path_for(csv_dir: str | Path, symbol: str) -> Path:
+    base = Path(csv_dir)
+    for name in (symbol.lower(), symbol):
+        path = base / f"{name}.csv"
+        if path.exists():
+            return path
+    raise FileNotFoundError(f"CSV for {symbol} not found in {base}")
+
+
+def load_symbol_frame(csv_dir: str | Path, symbol: str) -> pd.DataFrame:
+    """Load one symbol's CSV, normalize columns and sort by date."""
+    frame = pd.read_csv(csv_path_for(csv_dir, symbol), header=0, index_col=0, parse_dates=True)
+    frame.columns = [col.strip().lower().replace(" ", "_") for col in frame.columns]
+    return frame.sort_index()
+
+
 class DataHandler(ABC):
     symbol_list: list[str]
     continue_backtest: bool
@@ -48,31 +64,24 @@ class HistoricCSVDataHandler(DataHandler):
         csv_dir: str | Path,
         symbol_list: list[str],
         start_date: datetime | None = None,
+        window_size: int = 400,
     ) -> None:
         self.events = events
         self.csv_dir = Path(csv_dir)
         self.symbol_list = symbol_list
         self.start_date = start_date
+        self.window_size = max(1, window_size)
         self.symbol_data: dict[str, Iterator[BarRow]] = {}
         self.latest_symbol_data: dict[str, list[BarRow]] = {}
         self.continue_backtest = True
         self._open_convert_csv_files()
-
-    def _csv_path(self, symbol: str) -> Path:
-        for name in (symbol.lower(), symbol):
-            path = self.csv_dir / f"{name}.csv"
-            if path.exists():
-                return path
-        raise FileNotFoundError(f"CSV for {symbol} not found in {self.csv_dir}")
 
     def _open_convert_csv_files(self) -> None:
         frames: dict[str, pd.DataFrame] = {}
         comb_index: Index | None = None
 
         for symbol in self.symbol_list:
-            frame = pd.read_csv(self._csv_path(symbol), header=0, index_col=0, parse_dates=True)
-            frame.columns = [col.strip().lower().replace(" ", "_") for col in frame.columns]
-            frame = frame.sort_index()
+            frame = load_symbol_frame(self.csv_dir, symbol)
             if "adj_close" in frame.columns:
                 frame["returns"] = frame["adj_close"].pct_change().fillna(0.0)
             frames[symbol] = frame
@@ -130,7 +139,10 @@ class HistoricCSVDataHandler(DataHandler):
             except StopIteration:
                 self.continue_backtest = False
             else:
-                self.latest_symbol_data[symbol].append(bar)
+                bars = self.latest_symbol_data[symbol]
+                bars.append(bar)
+                if len(bars) > self.window_size:
+                    del bars[0]
                 got_bar = True
         if got_bar:
             self.events.put(MarketEvent())

@@ -12,6 +12,7 @@ from quant_backtesting.event import (
     OrderType,
     SignalEvent,
     SignalType,
+    ib_commission,
 )
 from quant_backtesting.performance import create_drawdowns, create_sharpe_ratio
 
@@ -121,6 +122,8 @@ class Portfolio:
         match signal.signal_type:
             case SignalType.LONG if current_quantity == 0:
                 size = min(quantity, int(cash // price))
+                while size > 0 and size * price + ib_commission(size) > cash:
+                    size -= 1
                 if size <= 0:
                     return None
                 return OrderEvent(

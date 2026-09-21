@@ -4,22 +4,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from quant_backtesting.data import load_symbol_frame
+
 
 def load_price_frame(symbol: str, csv_dir: str | Path = "csv") -> pd.DataFrame:
-    csv_dir = Path(csv_dir)
-    path = next(
-        (
-            candidate
-            for candidate in (csv_dir / f"{symbol.lower()}.csv", csv_dir / f"{symbol}.csv")
-            if candidate.exists()
-        ),
-        None,
-    )
-    if path is None:
-        raise FileNotFoundError(f"CSV for {symbol} not found in {csv_dir}")
-    frame = pd.read_csv(path, header=0, index_col=0, parse_dates=True)
-    frame.columns = [col.strip().lower().replace(" ", "_") for col in frame.columns]
-    return frame.sort_index()
+    return load_symbol_frame(csv_dir, symbol)
 
 
 def create_lagged_series(

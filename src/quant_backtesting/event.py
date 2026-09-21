@@ -26,6 +26,12 @@ class OrderDirection(StrEnum):
     SELL = "SELL"
 
 
+def ib_commission(quantity: int) -> float:
+    """Interactive Brokers US API directed-order stock commission, in USD."""
+    rate = 0.013 if quantity <= 500 else 0.008
+    return max(1.3, rate * quantity)
+
+
 class Event:
     type: EventType
 
@@ -83,5 +89,4 @@ class FillEvent(Event):
         return self.commission if self.commission is not None else 0.0
 
     def calculate_ib_commission(self) -> float:
-        rate = 0.013 if self.quantity <= 500 else 0.008
-        return max(1.3, rate * self.quantity)
+        return ib_commission(self.quantity)
