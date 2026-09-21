@@ -1,0 +1,33 @@
+[project]
+name = "quant-backtesting"
+version = "0.2.0"
+description = "Event-driven quantitative backtesting framework"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "scikit-learn",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pandas-stubs",
+]
+
+[project.scripts]
+run-mac = "quant_backtesting.cli:run_mac"
+run-snp-forecast = "quant_backtesting.cli:run_snp_forecast"
+
+[tool.pyright]
+include = ["src", "examples"]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+extraPaths = ["src"]
