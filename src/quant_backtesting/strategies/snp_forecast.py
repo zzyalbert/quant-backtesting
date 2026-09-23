@@ -1,7 +1,7 @@
 from datetime import datetime
 from queue import Queue
-from typing import override
 
+import numpy as np
 import pandas as pd
 from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 
@@ -49,7 +49,6 @@ class SPYDailyForecastStrategy(Strategy):
         model.fit(x.loc[x.index < start_test], y.loc[y.index < start_test])
         return model
 
-    @override
     def calculate_signals(self, event: MarketEvent) -> None:
         self.bar_index += 1
         if self.bar_index <= 5:
@@ -57,7 +56,7 @@ class SPYDailyForecastStrategy(Strategy):
 
         symbol = self.symbol_list[0]
         lags = self.bars.get_latest_bars_values(symbol, "returns", n=3)
-        if lags.size < 3:
+        if lags.size < 3 or np.isnan(lags).any():
             return
 
         pred_frame = pd.DataFrame({"lag1": [lags[-2] * 100.0], "lag2": [lags[-3] * 100.0]})

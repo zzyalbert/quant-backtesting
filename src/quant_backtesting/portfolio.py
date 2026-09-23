@@ -1,5 +1,6 @@
 from datetime import datetime
 from queue import Queue
+from typing import TypeAlias
 
 import pandas as pd
 
@@ -16,7 +17,27 @@ from quant_backtesting.event import (
 )
 from quant_backtesting.performance import create_drawdowns, create_sharpe_ratio
 
-type LedgerRow = dict[str, datetime | int | float]
+LedgerRow: TypeAlias = dict[str, datetime | int | float]
+
+
+def max_shares_for_cash(cash: float, price: float, max_size: int) -> int:
+    """Largest share count whose notional plus IB commission fits in cash."""
+    if cash <= 0 or price <= 0 or max_size <= 0:
+        return 0
+    size = min(max_size, int(cash // price))
+    while size > 0 and size * price + ib_commission(size) > cash:
+        size -= 1
+    return size
+
+
+def max_cash_secured_short(cash: float, price: float, max_size: int) -> int:
+    """Largest short whose notional fits in cash and whose commission is payable."""
+    if cash <= 0 or price <= 0 or max_size <= 0:
+        return 0
+    size = min(max_size, int(cash // price))
+    while size > 0 and ib_commission(size) > cash:
+        size -= 1
+    return size
 
 
 class Portfolio:
@@ -97,7 +118,7 @@ class Portfolio:
 
     def update_holdings_from_fill(self, fill: FillEvent) -> None:
         fill_dir = 1 if fill.direction is OrderDirection.BUY else -1
-        cost = fill_dir * fill.fill_cost * fill.quantity
+        cost = fill_dir * fill.fill_price * fill.quantity
         commission = fill.paid_commission()
         self.current_holdings[fill.symbol] += cost
         self.current_holdings["commission"] += commission
@@ -106,9 +127,41 @@ class Portfolio:
             self._market_value(symbol) for symbol in self.symbol_list
         )
 
-    def update_fill(self, event: FillEvent) -> None:
-        self.update_positions_from_fill(event)
-        self.update_holdings_from_fill(event)
+    def _constrain_fill(self, fill: FillEvent) -> FillEvent | None:
+        price = fill.fill_price
+        if pd.isna(price) or price <= 0:
+            return None
+
+        cash = self.current_holdings["cash"]
+        position = self.current_positions[fill.symbol]
+
+        if fill.direction is OrderDirection.BUY:
+            max_size = min(fill.quantity, abs(position)) if position < 0 else fill.quantity
+            size = max_shares_for_cash(cash, price, max_size)
+            if size <= 0:
+                return None
+            return fill if size == fill.quantity else fill.with_quantity(size)
+
+        if position > 0:
+            size = min(fill.quantity, position)
+            if size <= 0:
+                return None
+            if cash + size * price < ib_commission(size):
+                return None
+            return fill if size == fill.quantity else fill.with_quantity(size)
+
+        size = max_cash_secured_short(cash, price, fill.quantity)
+        if size <= 0:
+            return None
+        return fill if size == fill.quantity else fill.with_quantity(size)
+
+    def update_fill(self, event: FillEvent) -> bool:
+        fill = self._constrain_fill(event)
+        if fill is None:
+            return False
+        self.update_positions_from_fill(fill)
+        self.update_holdings_from_fill(fill)
+        return True
 
     def generate_naive_order(self, signal: SignalEvent) -> OrderEvent | None:
         symbol = signal.symbol
@@ -121,9 +174,7 @@ class Portfolio:
 
         match signal.signal_type:
             case SignalType.LONG if current_quantity == 0:
-                size = min(quantity, int(cash // price))
-                while size > 0 and size * price + ib_commission(size) > cash:
-                    size -= 1
+                size = max_shares_for_cash(cash, price, quantity)
                 if size <= 0:
                     return None
                 return OrderEvent(
@@ -133,10 +184,13 @@ class Portfolio:
                     direction=OrderDirection.BUY,
                 )
             case SignalType.SHORT if current_quantity == 0:
+                size = max_cash_secured_short(cash, price, quantity)
+                if size <= 0:
+                    return None
                 return OrderEvent(
                     symbol=symbol,
                     order_type=OrderType.MARKET,
-                    quantity=quantity,
+                    quantity=size,
                     direction=OrderDirection.SELL,
                 )
             case SignalType.EXIT if current_quantity > 0:
@@ -147,10 +201,13 @@ class Portfolio:
                     direction=OrderDirection.SELL,
                 )
             case SignalType.EXIT if current_quantity < 0:
+                size = max_shares_for_cash(cash, price, abs(current_quantity))
+                if size <= 0:
+                    return None
                 return OrderEvent(
                     symbol=symbol,
                     order_type=OrderType.MARKET,
-                    quantity=abs(current_quantity),
+                    quantity=size,
                     direction=OrderDirection.BUY,
                 )
             case _:

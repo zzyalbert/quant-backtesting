@@ -3,7 +3,7 @@ name = "quant-backtesting"
 version = "0.2.0"
 description = "Event-driven quantitative backtesting framework"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "matplotlib",
     "numpy",
@@ -18,15 +18,20 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "pandas-stubs",
+    "pytest",
 ]
 
 [project.scripts]
 run-mac = "quant_backtesting.cli:run_mac"
 run-snp-forecast = "quant_backtesting.cli:run_snp_forecast"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
 [tool.pyright]
-include = ["src", "examples"]
-pythonVersion = "3.14"
+include = ["src", "examples", "tests"]
+pythonVersion = "3.11"
 typeCheckingMode = "standard"
 venvPath = "."
 venv = ".venv"

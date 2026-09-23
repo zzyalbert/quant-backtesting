@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from queue import Queue
-from typing import override
+
+import pandas as pd
 
 from quant_backtesting.data import DataHandler
 from quant_backtesting.event import Event, FillEvent, OrderEvent, OrderType
@@ -9,6 +10,9 @@ from quant_backtesting.event import Event, FillEvent, OrderEvent, OrderType
 class ExecutionHandler(ABC):
     @abstractmethod
     def execute_order(self, event: OrderEvent) -> None: ...
+
+    def process_pending_orders(self) -> None:
+        return None
 
 
 class SimulatedExecutionHandler(ExecutionHandler):
@@ -25,7 +29,6 @@ class SimulatedExecutionHandler(ExecutionHandler):
         self.exchange = exchange
         self._pending: list[OrderEvent] = []
 
-    @override
     def execute_order(self, event: OrderEvent) -> None:
         if event.order_type != OrderType.MARKET:
             raise ValueError(f"unsupported order type: {event.order_type}")
@@ -34,13 +37,20 @@ class SimulatedExecutionHandler(ExecutionHandler):
     def process_pending_orders(self) -> None:
         pending, self._pending = self._pending, []
         for order in pending:
+            try:
+                price = self.bars.get_latest_bar_value(order.symbol, "adj_close")
+                timeindex = self.bars.get_latest_bar_datetime(order.symbol)
+            except KeyError:
+                continue
+            if pd.isna(price) or price <= 0:
+                continue
             self.events.put(
                 FillEvent(
-                    timeindex=self.bars.get_latest_bar_datetime(order.symbol),
+                    timeindex=timeindex,
                     symbol=order.symbol,
                     exchange=self.exchange,
                     quantity=order.quantity,
                     direction=order.direction,
-                    fill_cost=self.bars.get_latest_bar_value(order.symbol, "adj_close"),
+                    fill_price=float(price),
                 )
             )

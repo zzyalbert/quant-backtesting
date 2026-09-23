@@ -26,6 +26,12 @@ class OrderDirection(StrEnum):
     SELL = "SELL"
 
 
+class MarketPosition(StrEnum):
+    FLAT = "FLAT"
+    LONG = "LONG"
+    SHORT = "SHORT"
+
+
 def ib_commission(quantity: int) -> float:
     """Interactive Brokers US API directed-order stock commission, in USD."""
     rate = 0.013 if quantity <= 500 else 0.008
@@ -77,16 +83,28 @@ class FillEvent(Event):
     exchange: str
     quantity: int
     direction: OrderDirection
-    fill_cost: float
+    fill_price: float
     commission: float | None = None
     type: EventType = field(default=EventType.FILL, init=False)
 
     def __post_init__(self) -> None:
+        if self.quantity <= 0:
+            raise ValueError("fill quantity must be positive")
         if self.commission is None:
-            self.commission = self.calculate_ib_commission()
+            self.commission = ib_commission(self.quantity)
 
     def paid_commission(self) -> float:
         return self.commission if self.commission is not None else 0.0
 
     def calculate_ib_commission(self) -> float:
         return ib_commission(self.quantity)
+
+    def with_quantity(self, quantity: int) -> "FillEvent":
+        return FillEvent(
+            timeindex=self.timeindex,
+            symbol=self.symbol,
+            exchange=self.exchange,
+            quantity=quantity,
+            direction=self.direction,
+            fill_price=self.fill_price,
+        )

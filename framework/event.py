@@ -3,11 +3,13 @@ from quant_backtesting.event import (
     EventType,
     FillEvent,
     MarketEvent,
+    MarketPosition,
     OrderDirection,
     OrderEvent,
     OrderType,
     SignalEvent,
     SignalType,
+    ib_commission,
 )
 
 __all__ = [
@@ -15,9 +17,11 @@ __all__ = [
     "EventType",
     "FillEvent",
     "MarketEvent",
+    "MarketPosition",
     "OrderDirection",
     "OrderEvent",
     "OrderType",
     "SignalEvent",
     "SignalType",
+    "ib_commission",
 ]

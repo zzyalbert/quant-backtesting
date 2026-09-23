@@ -1,11 +1,13 @@
+import logging
 from queue import Queue
-from typing import override
 
 import numpy as np
 
 from quant_backtesting.data import DataHandler
-from quant_backtesting.event import Event, MarketEvent, SignalEvent, SignalType
+from quant_backtesting.event import Event, MarketEvent, MarketPosition, SignalEvent, SignalType
 from quant_backtesting.strategy import Strategy
+
+logger = logging.getLogger(__name__)
 
 
 class MovingAverageCrossStrategy(Strategy):
@@ -20,9 +22,8 @@ class MovingAverageCrossStrategy(Strategy):
         self.symbol_list = self.bars.symbol_list
         self.short_window = short_window
         self.long_window = long_window
-        self.bought = dict.fromkeys(self.symbol_list, "OUT")
+        self.bought = dict.fromkeys(self.symbol_list, MarketPosition.FLAT)
 
-    @override
     def calculate_signals(self, event: MarketEvent) -> None:
         for symbol in self.symbol_list:
             bars = self.bars.get_latest_bars_values(symbol, "adj_close", n=self.long_window)
@@ -34,8 +35,8 @@ class MovingAverageCrossStrategy(Strategy):
             bar_date = self.bars.get_latest_bar_datetime(symbol)
 
             match (short_sma > long_sma, self.bought[symbol]):
-                case (True, "OUT"):
-                    print(f"LONG: {bar_date}")
+                case (True, MarketPosition.FLAT):
+                    logger.info("LONG: %s", bar_date)
                     self.events.put(
                         SignalEvent(
                             strategy_id=1,
@@ -45,9 +46,9 @@ class MovingAverageCrossStrategy(Strategy):
                             strength=1.0,
                         )
                     )
-                    self.bought[symbol] = "LONG"
-                case (False, "LONG"):
-                    print(f"EXIT: {bar_date}")
+                    self.bought[symbol] = MarketPosition.LONG
+                case (False, MarketPosition.LONG):
+                    logger.info("EXIT: %s", bar_date)
                     self.events.put(
                         SignalEvent(
                             strategy_id=1,
@@ -57,6 +58,6 @@ class MovingAverageCrossStrategy(Strategy):
                             strength=1.0,
                         )
                     )
-                    self.bought[symbol] = "OUT"
+                    self.bought[symbol] = MarketPosition.FLAT
                 case _:
                     continue

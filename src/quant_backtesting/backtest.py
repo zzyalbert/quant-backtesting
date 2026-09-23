@@ -1,8 +1,9 @@
+import logging
 from datetime import datetime
 from pprint import pprint
 from queue import Empty, Queue
 
-from quant_backtesting.data import DataHandler, HistoricCSVDataHandler
+from quant_backtesting.data import DataHandler
 from quant_backtesting.event import (
     Event,
     FillEvent,
@@ -10,9 +11,11 @@ from quant_backtesting.event import (
     OrderEvent,
     SignalEvent,
 )
-from quant_backtesting.execution import SimulatedExecutionHandler
+from quant_backtesting.execution import ExecutionHandler
 from quant_backtesting.portfolio import Portfolio
 from quant_backtesting.strategy import Strategy
+
+logger = logging.getLogger(__name__)
 
 
 class Backtest:
@@ -22,11 +25,12 @@ class Backtest:
         symbol_list: list[str],
         initial_capital: float,
         start_date: datetime,
-        data_handler: type[HistoricCSVDataHandler],
-        execution_handler: type[SimulatedExecutionHandler],
+        data_handler: type[DataHandler],
+        execution_handler: type[ExecutionHandler],
         portfolio: type[Portfolio],
         strategy: type[Strategy],
         periods: int = 252,
+        window_size: int = 400,
     ) -> None:
         self.csv_dir = csv_dir
         self.symbol_list = symbol_list
@@ -37,6 +41,7 @@ class Backtest:
         self.portfolio_cls = portfolio
         self.strategy_cls = strategy
         self.periods = periods
+        self.window_size = window_size
         self.events: Queue[Event] = Queue()
         self.signals = 0
         self.orders = 0
@@ -44,9 +49,13 @@ class Backtest:
         self._generate_trading_instances()
 
     def _generate_trading_instances(self) -> None:
-        print("Creating DataHandler, Strategy, Portfolio and ExecutionHandler")
+        logger.info("Creating DataHandler, Strategy, Portfolio and ExecutionHandler")
         self.data_handler: DataHandler = self.data_handler_cls(
-            self.events, self.csv_dir, self.symbol_list, self.start_date
+            self.events,
+            self.csv_dir,
+            self.symbol_list,
+            self.start_date,
+            window_size=self.window_size,
         )
         self.strategy = self.strategy_cls(self.data_handler, self.events)
         self.portfolio = self.portfolio_cls(
@@ -77,12 +86,14 @@ class Backtest:
                 self.orders += 1
                 self.execution_handler.execute_order(event)
             case FillEvent():
-                self.fills += 1
-                self.portfolio.update_fill(event)
+                if self.portfolio.update_fill(event):
+                    self.fills += 1
 
     def _run_backtest(self) -> None:
         while self.data_handler.continue_backtest:
             self.data_handler.update_bars()
+            if not self.data_handler.continue_backtest:
+                break
             self.execution_handler.process_pending_orders()
             events = self._drain_events()
             fills = [event for event in events if isinstance(event, FillEvent)]

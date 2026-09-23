@@ -1,3 +1,5 @@
+import logging
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -10,14 +12,27 @@ from quant_backtesting.strategies.snp_forecast import SPYDailyForecastStrategy
 
 
 def _csv_dir() -> str:
-    candidates = (Path.cwd() / "csv", Path(__file__).resolve().parents[2] / "csv")
-    for path in candidates:
+    env = os.environ.get("QUANT_BACKTESTING_CSV_DIR")
+    if env:
+        path = Path(env)
         if path.is_dir():
             return str(path)
-    raise FileNotFoundError("csv directory not found")
+        raise FileNotFoundError(f"QUANT_BACKTESTING_CSV_DIR is not a directory: {path}")
+    cwd = Path.cwd() / "csv"
+    if cwd.is_dir():
+        return str(cwd)
+    raise FileNotFoundError(
+        "csv directory not found; set QUANT_BACKTESTING_CSV_DIR or run from the repo root"
+    )
+
+
+def _configure_logging() -> None:
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def run_mac() -> None:
+    _configure_logging()
     Backtest(
         csv_dir=_csv_dir(),
         symbol_list=["AAPL"],
@@ -31,6 +46,7 @@ def run_mac() -> None:
 
 
 def run_snp_forecast() -> None:
+    _configure_logging()
     Backtest(
         csv_dir=_csv_dir(),
         symbol_list=["SPY"],
